@@ -35,7 +35,6 @@ int main(){
 		printf("No existe el directorio indicado. No se puede realizar un respaldo.\n");
 		exit(0);
 	}
-	//printf("Hoy: %s\n",ctime(&actual));
 
     printf("Padre: %i", getpid());
     printf("\n=======================================\n");
@@ -62,11 +61,12 @@ int main(){
 		strcpy(command,"");
 		strcat(command,"rm -r ");
 		strcat(command,dirW);
+		//strcat(command," *");
 		system(command);
 		strcpy(command,"");
 		strcat(command,"mkdir ");
 		strcat(command,dirW); //Aquí concatenar la fecha y hora
-		strcat(command,"_$(date +%d%m%Y_%H_%M_%S)"); 
+		//strcat(command,"_$(date +%d%m%Y_%H_%M_%S)"); 
 		system(command);
 	}
 	// Hasta aquí genera la lista de archivos y crea o sobreescribe el directorio respaldo
@@ -91,7 +91,7 @@ int main(){
         break;
 
         case 0:
-          	close(pfd[1]);
+          	close(pfd[1]); // Cierra el descriptor de escritura que no va a usar.
 			close(pfd2[0]);
 			close(pfd3[1]);
 
@@ -99,16 +99,22 @@ int main(){
 			read(pfd[0],msg,SIZE);
 			printf("\nHijo(pid=%i), instruccion del padre: %s\n", getpid(), msg);
 			
-			write(pfd2[1],"<--- Hola padre, ¿de cuantos archivos sera el respaldo?...\n",SIZE);
+			write(pfd2[1],"<--- Hola padre, ¿de cuantos archivos sera el respaldo?...",SIZE);
+			read(pfd3[0],msg,SIZE);
 			
-			printf("\nHijo(pid=%i), archivos a respaldar:\n", getpid());
-			for(int i = 0; i < 9; i++){
-				read(pfd3[0],msg,SIZE);
-				printf("%s\n", msg);
-				
+			while(read(pfd3[0],msg,SIZE)){
+				if (msg == "FIN")
+					break;
+				strcpy(command,"");
+				strcat(command,"cp ");
+				strcat(command,msg);
+				strcat(command," ");
+				strcat(command,dirW);
+				printf("%s\n", command);
 			}
+			printf("Archivos leidos con exito\n");
 
-			close(pfd[0]);
+			close(pfd[0]); //Cierra su canal de lectura porque ya termino
 			close(pfd2[1]);
 			close(pfd3[0]);
 			exit(0);
@@ -119,27 +125,37 @@ int main(){
 			close(pfd2[1]);
 			close(pfd3[0]);
 
-			//printf("\nPadre(pid= %i), mensaje a enviar: ", getpid());
 			write(pfd[1],"Realiza el siguiente respaldo",SIZE);
 
 			read(pfd2[0], buffer, SIZE);
 			printf("\nPadre(pid=%i), lee mensaje del hijo: %s\n", getpid(), buffer);
 			
-			file = fopen("/home/chavez/test.txt","r");
+			file = fopen("test.txt","r");
+
 			if(file == NULL){
 				perror("\nError al abrir el archivo");
 			}else{
-				lineanum = atoi(fgets (linea, sizeof linea, file));
-				lineanum--;
-				while(fgets (linea, sizeof linea, file) != NULL){
-					write(pfd3[1],linea,SIZE);
-					contador++;
-					if(lineanum == contador)
-						write(pfd3[1],"FIN",SIZE);
+				char palabra[30];
+				//Contabiliza los archivos a respaldar
+				while(!feof(file)){
+					fscanf(file,"%s ",palabra);
+					lineanum++;
 				}
+				printf("lineanum: %d\n", lineanum);
+				//Rebobina el apuntador para volver a leer el archivo
+				rewind(file);
+				for (int i = 0; i < lineanum; ++i){
+					fgets (linea, sizeof linea, file);
+					strtok(linea,"\n");
+					write(pfd3[1],linea,SIZE);
+				}
+				write(pfd3[1],"FIN",SIZE);
 				
 			}
-			fclose(file);
+			if(fclose(file) != 0){
+				printf("Error al cerrar el directorio de respaldo.\n");
+				exit(0);
+			}
 
 			close(pfd[1]); //Cierra su canal de escritura porque ya termino
 			close(pfd2[0]);
