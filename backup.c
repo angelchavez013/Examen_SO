@@ -3,34 +3,74 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 
 #define SIZE 512
 
 int main(){
-	FILE * file;
-
+	FILE *file;
 	int pfd[2],pfd2[2],pfd3[2];
 	char msg[SIZE], linea[SIZE];
 	char buffer[SIZE];
+	char dirR[60];
+	char dirW[60], *dirW2;
+	char command[70];
 	pid_t pid;
 	int status, lineanum, contador;
 	
 	system ("clear");
+	// Se reciben las rutas d eorigen del respaldo y destino
+	printf("Ingresa la ruta absoluta del directorio a respaldar: ");
+	scanf("%s", dirR);
+	printf("Ingresa la ruta absoluta del directorio destino: ");
+	scanf("%s", dirW);
+	//printf("%s, %s\n", dirR, dirW);
+
+	// El comando test realiza una verificación segun la opcion señalada sobre un directorio o archivo
+	// en este caso regresa 0 si existe el directorio indicado
+	strcpy(command,"");
+	strcat(command,"test -d ");
+	strcat(command,dirR);
+	if(system(command) != 0){
+		printf("No existe el directorio indicado. No se puede realizar un respaldo.\n");
+		exit(0);
+	}
+	//printf("Hoy: %s\n",ctime(&actual));
 
     printf("Padre: %i", getpid());
     printf("\n=======================================\n");
+    printf("\tGENERANDO LISTA DE ARCHIVOS A RESPALDAR\n");
 	system("rm test.txt");
-	printf("Se borrara el archivo con los nombres para crear uno nuevo\n\n");
-	system("ls -l tareasSO | wc -l >> test.txt"); //Guardar la informacion de un comando
-	system("ls tareasSO >> test.txt");
-
-	if (system("mkdir Respaldo") == 0){
-		printf("Directorio creado\n");
+	strcpy(command,"");
+	strcat(command,"ls ");
+	strcat(command,dirR);
+	strcat(command," >> test.txt");
+	system(command);
+		
+	// Crea el directorio de respaldo, si existe lo elimina y crea uno limpio
+	//dirW2 = "%s $(date +%d%m%Y_%H_%M_%S)",dirW;
+	strcpy(command,"");
+	strcat(command,"test -d ");
+    strcat(command,dirW);
+	if(system(command) != 0){
+		strcpy(command,"");
+		strcat(command,"mkdir ");
+		strcat(command,dirW);
+		//strcat(command,"_$(date +%d%m%Y_%H_%M_%S)");
+		system(command);
 	}else{
-		printf("Se borrara el directorio para crear uno nuevo\n");
-		system("rm -r Respaldo");
-		system("mkdir Respaldo");
+		strcpy(command,"");
+		strcat(command,"rm -r ");
+		strcat(command,dirW);
+		system(command);
+		strcpy(command,"");
+		strcat(command,"mkdir ");
+		strcat(command,dirW); //Aquí concatenar la fecha y hora
+		strcat(command,"_$(date +%d%m%Y_%H_%M_%S)"); 
+		system(command);
 	}
+	// Hasta aquí genera la lista de archivos y crea o sobreescribe el directorio respaldo
+
 
 	if (pipe(pfd) < 0) { 
 		perror("\nError al crear el pipe");
@@ -51,7 +91,7 @@ int main(){
         break;
 
         case 0:
-          	close(pfd[1]); // Cierra el descriptor de escritura que no va a usar.
+          	close(pfd[1]);
 			close(pfd2[0]);
 			close(pfd3[1]);
 
@@ -59,21 +99,16 @@ int main(){
 			read(pfd[0],msg,SIZE);
 			printf("\nHijo(pid=%i), instruccion del padre: %s\n", getpid(), msg);
 			
-			write(pfd2[1],"<--- Hola padre, ¿de cuantos archivos sera el respaldo?...",SIZE);
+			write(pfd2[1],"<--- Hola padre, ¿de cuantos archivos sera el respaldo?...\n",SIZE);
 			
-			read(pfd3[0],msg,SIZE);
-			/*while(msg != "FIN"){
-				if(msg != "FIN"){
-					printf("\nHijo(pid=%i), archivos a respaldar:\n", getpid());
-					read(pfd3[0],msg,SIZE);
-					printf("\n%s\n", msg);
-				}else{
-					return 0;
-				}
+			printf("\nHijo(pid=%i), archivos a respaldar:\n", getpid());
+			for(int i = 0; i < 9; i++){
+				read(pfd3[0],msg,SIZE);
+				printf("%s\n", msg);
 				
-			}*/
+			}
 
-			close(pfd[0]); //Cierra su canal de lectura porque ya termino
+			close(pfd[0]);
 			close(pfd2[1]);
 			close(pfd3[0]);
 			exit(0);
@@ -90,14 +125,13 @@ int main(){
 			read(pfd2[0], buffer, SIZE);
 			printf("\nPadre(pid=%i), lee mensaje del hijo: %s\n", getpid(), buffer);
 			
-			file = fopen("test.txt","r");
+			file = fopen("/home/chavez/test.txt","r");
 			if(file == NULL){
 				perror("\nError al abrir el archivo");
 			}else{
 				lineanum = atoi(fgets (linea, sizeof linea, file));
 				lineanum--;
 				while(fgets (linea, sizeof linea, file) != NULL){
-					printf("Linea: %d\n",lineanum);
 					write(pfd3[1],linea,SIZE);
 					contador++;
 					if(lineanum == contador)
